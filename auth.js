@@ -1,52 +1,25 @@
-// routes/auth.js
-const express = require('express');
-const bcrypt = require('bcryptjs');
+// middleware/auth.js
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const router = express.Router();
 
-// Register
-router.post('/register', async (req, res) => {
+const auth = async (req, res, next) => {
   try {
-    const { email, password, name } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ success: false, message: 'Email and password required' });
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'No token provided' });
     }
 
-    const existingUser = await User.findOne({ where: { email } });
-    if (existingUser) {
-      return res.status(400).json({ success: false, message: 'User already exists' });
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findByPk(decoded.id);
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Invalid token' });
     }
 
-    const user = await User.create({ email, password, name });
-    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-
-    res.status(201).json({ success: true, token, user: { id: user.id, email: user.email, name: user.name } });
+    req.user = user;
+    next();
   } catch (error) {
-    console.error('Register error:', error);
-    res.status(500).json({ success: false, message: 'Registration failed' });
+    res.status(401).json({ success: false, message: 'Authentication failed' });
   }
-});
+};
 
-// Login
-router.post('/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ success: false, message: 'Email and password required' });
-    }
-
-    const user = await User.findOne({ where: { email } });
-    if (!user || !(await user.checkPassword(password))) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
-    }
-
-    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-    res.json({ success: true, token, user: { id: user.id, email: user.email, name: user.name } });
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ success: false, message: 'Login failed' });
-  }
-});
-
-module.exports = router;
+module.exports = auth;
