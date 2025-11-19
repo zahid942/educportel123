@@ -1,9 +1,8 @@
 // routes/results.js
 const express = require("express");
 const router = express.Router();
-const puppeteer = require("puppeteer");
-const chrome = require("chrome-aws-lambda");
-
+const puppeteer = require("puppeteer-core");
+const chromium = require('@sparticuz/chromium');
 // In-memory cache
 const cache = new Map();
 const TTL = 10 * 60 * 1000; // 10 minutes
@@ -19,8 +18,8 @@ setInterval(() => {
 // Generic browser launcher
 const launchBrowser = async () => {
   return await puppeteer.launch({
-    args: chrome.args,
-    executablePath: await chrome.executablePath,
+    args: chromium.args,
+    executablePath: await chromium.executablePath,
     headless: true,
     defaultViewport: null,
   });
@@ -467,5 +466,6 @@ function getFullName(code) {
   };
   return map[code] || code.toUpperCase();
 }
+
 
 module.exports = router;
