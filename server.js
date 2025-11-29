@@ -1,58 +1,66 @@
-// ✅ Import core packages
-const express = require("express");
-const dotenv = require("dotenv");
-const cors = require("cors");
+// server.js
+require("dotenv").config();
+const app = require("./app"); // Import the main app from app.js
+const rateLimit = require("express-rate-limit");
 const path = require("path");
 
-// ✅ Load environment variables
-dotenv.config();
+// ---------- ENV ----------
+const {
+  NODE_ENV = "development",
+  PORT = 5000,
+  FRONTEND_URL = "https://eductportul.netlify.app",
+} = process.env;
 
-// ✅ Import PostgreSQL connection
-const pool = require("./config/db");
+// ---------- Rate limit (Applied to results route) ----------
+const limiter = rateLimit({
+  windowMs: 60_000,
+  max: 10,
+  message: { success: false, message: "Too many requests, try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use("/api/results", limiter);
 
-// ✅ Create Express app
-const app = express();
+// ---------- Production Redirect and Static Serving ----------
+if (NODE_ENV === "production") {
+  app.get("/", (req, res, next) => {
+    if (req.path === "/" && !req.xhr) {
+      return res.redirect(301, FRONTEND_URL);
+    }
+    next();
+  });
+} else {
+  const frontendPath = path.resolve(__dirname, "..", "frontend");
+  app.use(express.static(frontendPath));
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(frontendPath, "index.html"));
+  });
+}
 
-// ✅ Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// ✅ Optional: Serve static frontend (if you deploy fullstack on one server)
-app.use(express.static(path.join(__dirname, "../frontend")));
-
-// ✅ Import route files
-const authRoutes = require("./routes/auth");
-const dashboardRoutes = require("./routes/dashboard");
-const profileRoutes = require("./routes/profile");
-const resultsRoutes = require("./routes/results");
-const resourcesRoutes = require("./routes/resources");
-const pagesRoutes = require("./routes/pages");
-
-// ✅ Use routes
-app.use("/api/auth", authRoutes);
-app.use("/api/dashboard", dashboardRoutes);
-app.use("/api/profile", profileRoutes);
-app.use("/api/results", resultsRoutes);
-app.use("/api/resources", resourcesRoutes);
-app.use("/api/pages", pagesRoutes);
-
-// ✅ Test route
-app.get("/", (req, res) => {
-  res.json({ success: true, message: "EduPortal API is running 🚀" });
+// ---------- Health Check ----------
+app.get("/api", (req, res) => {
+  res.json({ success: true, message: "EduPortal API is running" });
 });
 
-// ✅ Test PostgreSQL connection
-(async () => {
-  try {
-    const client = await pool.connect();
-    console.log("✅ Connected to PostgreSQL successfully!");
-    client.release();
-  } catch (err) {
-    console.error("❌ PostgreSQL connection error:", err.message);
-  }
-})();
+// ---------- Global Error Handler ----------
+app.use((err, req, res, next) => {
+  console.error("Unhandled error:", err);
+  res.status(err.status || 500).json({ success: false, message: err.message || "Server Error" });
+});
 
-// ✅ Start the server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+// ---------- Start Server ----------
+const server = app.listen(PORT, "0.0.0.0", () => {
+  const url = FRONTEND_URL.includes("localhost") ? `http://localhost:${PORT}` : FRONTEND_URL;
+  console.log(`Server running in ${NODE_ENV} mode`);
+  console.log(`API: http://localhost:${PORT}/api`);
+  console.log(`Frontend: ${url}`);
+});
+
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(`Port ${PORT} is already in use`);
+  } else {
+    console.error("Server error:", err);
+  }
+  process.exit(1);
+});

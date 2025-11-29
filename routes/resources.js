@@ -1,3 +1,4 @@
+// routes/resources.js
 const router = require('express').Router();
 const auth = require('../middleware/auth');
 const { getResources, addResource, deleteResource } = require('../controllers/resourceController');
