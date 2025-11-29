@@ -2,12 +2,9 @@
 const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
-const url = process.env.DATABASE_URL;
+let url = process.env.DATABASE_URL;
 
-console.log(
-  'DATABASE_URL present?', !!url,
-  '| sample:', url ? url.slice(0, 20) + '...' : url
-);
+console.log('RAW DATABASE_URL value:', JSON.stringify(url));
 
 if (!url) {
   throw new Error(
@@ -16,19 +13,52 @@ if (!url) {
   );
 }
 
-const sequelize = new Sequelize(url, {
-  dialect: 'postgres',
-  dialectOptions: {
-    ssl: { require: true, rejectUnauthorized: false },
-  },
-  pool: {
-    max: 5,
-    min: 0,
-    acquire: 30000,
-    idle: 10000,
-  },
-  retry: { max: 3 },
-});
+url = url.trim();
+
+// Strip wrapping quotes if they accidentally exist
+if (
+  (url.startsWith('"') && url.endsWith('"')) ||
+  (url.startsWith("'") && url.endsWith("'"))
+) {
+  url = url.slice(1, -1);
+}
+
+// Neon often gives `postgresql://` – normalize to `postgres://`
+if (url.startsWith('postgresql://')) {
+  url = 'postgres://' + url.slice('postgresql://'.length);
+}
+
+console.log(
+  'Normalized DATABASE_URL (hidden creds):',
+  url.replace(/:\/\/.*@/, '://***@')
+);
+
+// Parse into parts
+const dbUrl = new URL(url);
+
+const sequelize = new Sequelize(
+  dbUrl.pathname.slice(1),        // database name (without leading '/')
+  dbUrl.username,                 // user
+  dbUrl.password,                 // password
+  {
+    host: dbUrl.hostname,
+    port: dbUrl.port || 5432,
+    dialect: 'postgres',
+    dialectOptions: {
+      ssl: {
+        require: true,
+        rejectUnauthorized: false,
+      },
+    },
+    pool: {
+      max: 5,
+      min: 0,
+      acquire: 30000,
+      idle: 10000,
+    },
+    retry: { max: 3 },
+  }
+);
 
 sequelize.authenticate()
   .then(() => console.log('PostgreSQL connected'))
